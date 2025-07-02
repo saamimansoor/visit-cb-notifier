@@ -29,6 +29,6 @@ jobs:
           VISIT_USERNAME: ${{ secrets.MIS_USERNAME }}
           VISIT_PASSWORD: ${{ secrets.MIS_PASSWORD }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          FUTURE_MIN: 2000              # how far **ahead**
+          FUTURE_MIN: 15              # how far **ahead**
           LOOKBACK_HOURS: 10          # how far **behind**
         run: python visitcb.py
