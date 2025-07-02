@@ -18,6 +18,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Playwright
+        uses: microsoft/playwright-github-action@v1
+        with:
+          browsers: chromium
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
