@@ -3,7 +3,7 @@ name: Visit Callback Notifier
 on:
   schedule:
     # Every 15 min (GitHub cron uses UTC)
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}   # manual run button
 
 jobs:
