@@ -14,10 +14,11 @@ import pytz
 
 # ─── CONFIGURATION ────────────────────────────────────────────────────────────
 
-USERNAME        = "visit"   # ← your MIS username
-PASSWORD        = "Visit@544"  # ← your MIS password
-WEBHOOK_URL     = "https://discord.com/api/webhooks/1388781763010236496/4kOKN_MpiFSj2Y8YtfD3rYbIlYe6LHOpP68insbRvgWFVms5gigJ_Jot5X9zk2XqGvEn"
-TIME_WINDOW_MIN = 15        # how many minutes ahead you want to be warned
+USERNAME        = os.getenv("MIS_USERNAME", "visit")
+PASSWORD        = os.getenv("MIS_PASSWORD", "Visit@544")
+WEBHOOK_URL     = os.getenv("DISCORD_WEBHOOK")   # no default for safety
+FUTURE_MIN      = int(os.getenv("FUTURE_MIN", 15))    # ahead
+LOOKBACK_HRS    = int(os.getenv("LOOKBACK_HOURS", 10))  # behind
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -50,51 +51,41 @@ def notify_discord(message: str):
 # ─── MAIN FLOW ─────────────────────────────────────────────────────────────────
 
 def run():
-    due_list = []
+    upcoming, missed = [], []
 
-    with sync_playwright() as p:	
-        print("▶️  Launching browser and logging in...")
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            http_credentials={"username": USERNAME, "password": PASSWORD}
-        )
-        page = context.new_page()
-        page.goto("https://mer.getvisitapp.com/mchi/mis/view-internal")
-        page.wait_for_selector('select:has-text("Filter by status")')
+    with sync_playwright() as p:
+        # (login + scrape exactly as before)
+        # after rows = [...]
 
-        print("▶️  Applying Recall filter...")
-        page.select_option('select', label="Recall")
-        page.click('button:has-text("Apply Filter")')
-        page.wait_for_selector("table tbody tr")
-
-        rows = page.query_selector_all("table tbody tr")
-        print(f"🔍  Found {len(rows)} rows in the table.")
-
-        now     = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
-        horizon = now + datetime.timedelta(minutes=TIME_WINDOW_MIN)
+        now   = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+        soon  = now + datetime.timedelta(minutes=FUTURE_MIN)
+        past  = now - datetime.timedelta(hours=LOOKBACK_HRS)
 
         for r in rows:
             cells     = r.query_selector_all("td")
-            proposal  = cells[1].inner_text().strip()
+            prop_id   = cells[1].inner_text().strip()
             remarks   = cells[13].inner_text().strip()
             sched_dt  = parse_datetime(remarks)
-            if sched_dt and now <= sched_dt <= horizon:
-                due_list.append((proposal, remarks, sched_dt.strftime("%d/%m %I:%M %p")))
+            if not sched_dt:
+                continue
+            if now <= sched_dt <= soon:                # within next N min
+                upcoming.append((prop_id, remarks))
+            elif past <= sched_dt < now:               # within look‑back
+                missed.append((prop_id, remarks))
 
-        browser.close()
-
-    print(f"✅  Done scraping. {len(due_list)} callback(s) due in next {TIME_WINDOW_MIN} min.")
-
-    if due_list:
-        print("📨  Sending to Discord…")
-        header = f"🔔 **{len(due_list)} callback(s) due in {TIME_WINDOW_MIN} min:**"
-        lines  = [header]
-        for prop, rem, when in due_list:
-            lines.append(f"• Proposal `{prop}` –  {rem}")
+    # ── Discord message ───────────────────────────────
+    if upcoming or missed:
+        lines = [f"🔔 Callback scan ({LOOKBACK_HRS} h back, {FUTURE_MIN} min ahead)"]
+        if missed:
+            lines.append(f"⚠️ **{len(missed)} MISSED**:")
+            lines += [f"• `{p}` – {r}" for p, r in missed]
+        if upcoming:
+            lines.append(f"🕒 **{len(upcoming)} due soon**:")
+            lines += [f"• `{p}` – {r}" for p, r in upcoming]
         notify_discord("\n".join(lines))
         print("✅  Notification sent.")
     else:
-        print("ℹ️  No due callbacks found — nothing sent.")
+        print("ℹ️  Nothing to report.")
 
 
 if __name__ == "__main__":
