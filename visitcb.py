@@ -7,10 +7,7 @@ Purpose: Automatically log in to Visit MIS (via HTTP Basic‑Auth),
 """
 
 from playwright.sync_api import sync_playwright
-import re
-import datetime
-import requests
-import pytz
+import re, datetime, requests, pytz, os
 
 # ─── CONFIGURATION ────────────────────────────────────────────────────────────
 
@@ -53,9 +50,23 @@ def notify_discord(message: str):
 def run():
     upcoming, missed = [], []
 
-    with sync_playwright() as p:
-        # (login + scrape exactly as before)
-        # after rows = [...]
+    with sync_playwright() as p:	
+        print("▶️  Launching browser and logging in...")
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            http_credentials={"username": USERNAME, "password": PASSWORD}
+        )
+        page = context.new_page()
+        page.goto("https://mer.getvisitapp.com/mchi/mis/view-internal")
+        page.wait_for_selector('select:has-text("Filter by status")')
+
+        print("▶️  Applying Recall filter...")
+        page.select_option('select', label="Recall")
+        page.click('button:has-text("Apply Filter")')
+        page.wait_for_selector("table tbody tr")
+
+        rows = page.query_selector_all("table tbody tr")
+        print(f"🔍  Found {len(rows)} rows in the table.")
 
         now   = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
         soon  = now + datetime.timedelta(minutes=FUTURE_MIN)
